@@ -1,0 +1,47 @@
+{
+  "name": "works-calendar-engine",
+  "version": "0.1.0",
+  "description": "Framework-agnostic scheduling state machine with rule-based conflict detection.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "cross-env TZ=UTC vitest run",
+    "test:watch": "cross-env TZ=UTC vitest",
+    "type-check": "tsc --noEmit -p tsconfig.build.json",
+    "check": "npm run type-check && npm test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "peerDependencies": {
+    "date-fns": "^3.6.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.39",
+    "cross-env": "^10.1.0",
+    "date-fns": "^3.6.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  },
+  "keywords": [
+    "scheduling",
+    "calendar",
+    "conflict-detection",
+    "state-machine",
+    "framework-agnostic"
+  ]
+}
