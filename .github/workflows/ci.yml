@@ -28,8 +28,15 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Package check (attw)
-        run: npx --yes -p @arethetypeswrong/cli attw --pack . --profile esm-only
-
+      # Node ESM smoke test: actually load the built package the way a
+      # consumer would and confirm the top-level export resolves. Catches the
+      # ERR_MODULE_NOT_FOUND class of bugs that bit us during extraction.
+      #
+      # @arethetypeswrong/cli would be a nice add here, but as of 0.18.2 its
+      # tarball extractor (fflate streaming Gunzip) drops all chunks except
+      # the last, which makes it crash on this package. Revisit if upstream
+      # ships a fix.
       - name: Node ESM smoke test
-        run: node -e "import('./dist/index.js').then(m => { if (!m.CalendarEngine) throw new Error('CalendarEngine missing'); console.log('OK — ' + Object.keys(m).length + ' exports'); })"
+        run: |
+          node -e "import('./dist/index.js').then(m => { if (!m.CalendarEngine) throw new Error('CalendarEngine export missing'); if (typeof m.evaluateConflicts !== 'function') throw new Error('evaluateConflicts export missing'); console.log('OK — ' + Object.keys(m).length + ' exports'); })"
+          node -e "import('./dist/index.js').then(({ evaluateConflicts }) => { const r = evaluateConflicts({ proposed: { id: 'a', start: new Date(), end: new Date(Date.now()+3600000), resource: 'x' }, events: [], rules: [{ id: 'r', type: 'resource-overlap', severity: 'hard' }] }); if (!r.allowed) throw new Error('expected allowed for empty events'); console.log('OK — evaluateConflicts callable end-to-end'); })"
