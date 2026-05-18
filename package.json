@@ -3,26 +3,47 @@
   "version": "0.1.0",
   "description": "Framework-agnostic scheduling state machine with rule-based conflict detection.",
   "license": "MIT",
+  "author": "WorksCalendar",
+  "homepage": "https://github.com/workscalendar/Engine#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/workscalendar/Engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/workscalendar/Engine/issues"
+  },
   "type": "module",
-  "main": "./dist/index.js",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsup",
     "test": "cross-env TZ=UTC vitest run",
     "test:watch": "cross-env TZ=UTC vitest",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
-    "check": "npm run type-check && npm test"
+    "lint:package": "publint",
+    "check": "npm run type-check && npm test && npm run build && npm run lint:package",
+    "prepublishOnly": "npm run check"
   },
   "engines": {
     "node": ">=18"
@@ -34,6 +55,8 @@
     "@types/node": "^20.19.39",
     "cross-env": "^10.1.0",
     "date-fns": "^3.6.0",
+    "publint": "^0.3.0",
+    "tsup": "^8.3.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   },
