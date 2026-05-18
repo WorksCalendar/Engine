@@ -1,6 +1,6 @@
 {
   "name": "works-calendar-engine",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Framework-agnostic scheduling state machine with rule-based conflict detection.",
   "license": "MIT",
   "author": "Nathan Horstmeier <natehorst240@gmail.com>",

@@ -5,120 +5,130 @@
  * detection. Pure TypeScript; only runtime dep is date-fns.
  */
 
-// State machine
+// ── State machine ────────────────────────────────────────────────────────────
 export { CalendarEngine, createInitialState } from './engine/CalendarEngine.js';
-export { EventBus, channelForApprovalTransition } from './engine/eventBus.js';
+
+export * from './engine/eventBus.js';
+
 export { UndoRedoManager } from './engine/UndoRedoManager.js';
 
-// Operations
+// ── Operations ───────────────────────────────────────────────────────────────
 import * as buildOperation from './engine/operations/buildOperation.js';
 export { buildOperation };
-export type { OperationResult } from './engine/operations/operationResult.js';
-export type { EngineOperation } from './engine/schema/operationSchema.js';
+export * from './engine/operations/operationResult.js';
+export * from './engine/operations/safeMutate.js';
+export * from './engine/operations/resolveOperationScope.js';
+export * from './engine/operations/applyOperation.js';
+export * from './engine/adapters/normalizeInputEvent.js';
+export * from './engine/adapters/fromLegacyEvents.js';
+export * from './engine/adapters/toLegacyEvents.js';
 
-// Schema types
-export type { EngineEvent } from './engine/schema/eventSchema.js';
-export type { EngineOccurrence } from './engine/schema/occurrenceSchema.js';
-export type { EngineResource } from './engine/schema/resourceSchema.js';
-export type { Assignment } from './engine/schema/assignmentSchema.js';
-export type { Dependency } from './engine/schema/dependencySchema.js';
-export type { EventConstraint } from './engine/schema/constraintSchema.js';
-export type { ResourcePool, PoolStrategy } from './engine/schema/resourcePoolSchema.js';
+// ── Schema ───────────────────────────────────────────────────────────────────
+export * from './engine/schema/eventSchema.js';
+export * from './engine/schema/occurrenceSchema.js';
+export * from './engine/schema/resourceSchema.js';
+export * from './engine/schema/assignmentSchema.js';
+export * from './engine/schema/dependencySchema.js';
+export * from './engine/schema/constraintSchema.js';
+export * from './engine/schema/operationSchema.js';
+// engine/schema/resourcePoolSchema is a re-export shim of pools/resourcePoolSchema —
+// only export the canonical one (below) to avoid duplicate-export ambiguity.
+export * from './engine/schema/resourceCalendarSchema.js';
+export * from './engine/schema/calendarSchema.js';
 
-// Engine domain types
+// ── Engine domain types (CalendarView, CalendarState, FilterState) ───────────
 export type {
   CalendarView,
   CalendarState,
   FilterState,
 } from './engine/types.js';
+export * from './engine/engineConfig.js';
+export * from './engine/engineTypes.js';
 
-// Conflict detection
-export {
-  evaluateConflicts,
-  CONFLICT_RULE_TYPES,
-} from './conflictEngine.js';
-export type {
-  ConflictEvent,
-  ConflictRule,
-  ResourceOverlapRule,
-  CategoryMutexRule,
-  MinRestRule,
-  CapacityOverflowRule,
-  OutsideBusinessHoursRule,
-  AvailabilityViolationRule,
-  HoldConflictRule,
-  PolicyViolationRule,
-} from './conflictEngine.js';
+// ── Time utilities ───────────────────────────────────────────────────────────
+export * from './engine/time/dateMath.js';
+export * from './engine/time/timezone.js';
+export * from './engine/time/wallClock.js';
+export * from './engine/time/rangeMath.js';
+export * from './engine/time/dst.js';
 
-// Availability / requirements / holds / pools
-export { evaluateAvailability } from './availability/evaluateAvailability.js';
-export type {
-  AvailabilityWindow,
-  AvailabilityResult,
-  AvailabilityFailure,
-  AvailabilitySuccess,
-  AvailabilityReasonCode,
-} from './availability/evaluateAvailability.js';
+// ── Validation ───────────────────────────────────────────────────────────────
+export * from './engine/validation/validationTypes.js';
+export * from './engine/validation/validateOperation.js';
 
-export { evaluateRequirements } from './requirements/evaluateRequirements.js';
-export type {
-  RequirementShortfall,
-  RequirementsEvaluation,
-} from './requirements/evaluateRequirements.js';
+// ── Conflict detection ───────────────────────────────────────────────────────
+export * from './conflictEngine.js';
+export * from './conflicts/geoConflictRules.js';
 
-export { createHoldRegistry, findBlockingHold } from './holds/holdRegistry.js';
-export type { Hold, HoldWindow } from './holds/holdRegistry.js';
+// ── Availability / requirements / holds ──────────────────────────────────────
+export * from './availability/evaluateAvailability.js';
+export * from './availability/availabilityRule.js';
 
-export { resolvePool } from './pools/resolvePool.js';
-export type {
-  ResolvePoolResult,
-  ResolvePoolSuccess,
-  ResolvePoolError,
-  ResolvePoolErrorCode,
-} from './pools/resolvePool.js';
+export * from './requirements/evaluateRequirements.js';
+export * from './requirements/gateEventRequirements.js';
+export * from './requirements/requirementTypes.js';
 
-// Schedule kinds + overlap math
-export {
-  SCHEDULE_KINDS,
-  normalizeScheduleKind,
-  isOpenShiftEvent,
-  isCoveringEvent,
-  isShiftOrOnCallEvent,
-  isCoveredShift,
-  isScheduleWorkflowEvent,
-  SCHEDULE_WORKFLOW_CATEGORIES,
-} from './scheduleModel.js';
+export * from './holds/holdRegistry.js';
 
-export {
-  intervalsOverlap,
-  detectShiftConflicts,
-  buildOpenShiftEvent,
-} from './scheduleOverlap.js';
+// ── Resource pools (query DSL + resolution) ──────────────────────────────────
+export * from './pools/resolvePool.js';
+export * from './pools/evaluateQuery.js';
+export * from './pools/poolQuerySchema.js';
+export * from './pools/resourcePoolSchema.js';
+export * from './pools/locationAdapters.js';
+export * from './pools/validatePools.js';
+export * from './pools/geo.js';
 
-// Recurrence
-export { expandOccurrences } from './engine/recurrence/expandOccurrences.js';
-export { expandRRule } from './engine/recurrence/expandRRule.js';
+// ── Schedule kinds + overlap math ────────────────────────────────────────────
+export * from './scheduleModel.js';
+export * from './scheduleOverlap.js';
+export * from './scheduleMutations.js';
 
-// Approval state machine (lightweight — no workflow DSL)
-export {
-  transitionApproval,
-  legalActionsFrom,
-  LEGAL_TRANSITIONS,
-} from './approvals/transitions.js';
-export {
-  appendAuditEntry,
-  verifyAuditChain,
-  isAuditChainValid,
-} from './approvals/auditChain.js';
-export { lifecycleFromApprovalStage } from './approvals/lifecycleFromApprovalStage.js';
+// ── Recurrence ───────────────────────────────────────────────────────────────
+export * from './engine/recurrence/expandOccurrences.js';
+export * from './engine/recurrence/expandRecurrenceSafe.js';
+export * from './engine/recurrence/expandRRule.js';
+export * from './engine/recurrence/recurrenceMath.js';
+export * from './engine/recurrence/resolveRecurringEdit.js';
+export * from './engine/recurrence/detachOccurrence.js';
+export * from './engine/recurrence/splitSeries.js';
+export * from './engine/recurrence/templates.js';
 
-// Boundary helpers
-export { normalizeEvent, normalizeEvents } from './eventModel.js';
+// ── Selectors (read paths) ───────────────────────────────────────────────────
+export * from './engine/selectors/getOccurrencesInRange.js';
+export * from './engine/selectors/getOccurrencesForView.js';
+export * from './engine/selectors/getEventsById.js';
+export * from './engine/selectors/getSeriesById.js';
+
+// ── Transactions ─────────────────────────────────────────────────────────────
+export * from './engine/transactions/beginTransaction.js';
+export * from './engine/transactions/commitTransaction.js';
+export * from './engine/transactions/rollbackTransaction.js';
+
+// ── Approval state machine (lightweight — no workflow DSL) ───────────────────
+export * from './approvals/transitions.js';
+export * from './approvals/auditChain.js';
+export * from './approvals/lifecycleFromApprovalStage.js';
+export * from './approvals/sha256.js';
+
+// ── Boundary helpers ─────────────────────────────────────────────────────────
+export * from './eventModel.js';
 export { createId } from './createId.js';
 
-// Host-facing types (consumers need these to talk to the engine)
+// ── Geo (haversine, position guards, tracking meta) ──────────────────────────
+export * from './geo/geoTypes.js';
+export * from './geo/haversine.js';
+export * from './geo/positionGuards.js';
+export * from './geo/positionToResourceMeta.js';
+
+// ── Tenancy ──────────────────────────────────────────────────────────────────
+export * from './tenancy/tenantScope.js';
+
+// ── Host-facing types (consumers need these to talk to the engine) ───────────
+// types/events.js re-exports EventStatus which collides with the schema's;
+// the schema is canonical, so we cherry-pick the host-facing additions here
+// (the loose WorksCalendarEvent shape + lifecycle helpers).
 export type {
-  EventStatus,
   EventLifecycleState,
   EventComment,
   ReminderDef,
@@ -127,12 +137,6 @@ export type {
   EventVisualPriority,
 } from './types/events.js';
 export { isLifecycleState, EVENT_LIFECYCLE_STATES, isVisualPriority } from './types/events.js';
-export type {
-  ApprovalStage,
-  ApprovalStageId,
-  ApprovalActionId,
-  ApprovalHistoryActionId,
-  ApprovalHistoryEntry,
-  CategoryDef,
-  BookingPolicy,
-} from './types/assets.js';
+export * from './types/view.js';
+export * from './types/grouping.js';
+export * from './types/assets.js';
