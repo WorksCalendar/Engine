@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Framework-agnostic scheduling state machine with rule-based conflict detection.",
   "license": "MIT",
+  "author": "Nathan Horstmeier <natehorst240@gmail.com>",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -12,27 +14,35 @@
       "import": "./dist/index.js"
     }
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/WorksCalendar/Engine.git"
+  },
+  "bugs": {
+    "url": "https://github.com/WorksCalendar/Engine/issues"
+  },
+  "homepage": "https://github.com/WorksCalendar/Engine#readme",
   "files": [
     "dist",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "cross-env TZ=UTC vitest run",
-    "test:watch": "cross-env TZ=UTC vitest",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
     "check": "npm run type-check && npm test"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
   "peerDependencies": {
     "date-fns": "^3.6.0 || ^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
-    "cross-env": "^10.1.0",
     "date-fns": "^3.6.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
