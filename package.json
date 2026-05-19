@@ -6,13 +6,21 @@
   "author": "Nathan Horstmeier <natehorst240@gmail.com>",
   "type": "module",
   "sideEffects": false,
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
-    }
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
   },
   "repository": {
     "type": "git",
@@ -29,7 +37,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
@@ -44,6 +52,7 @@
   "devDependencies": {
     "@types/node": "^20.19.39",
     "date-fns": "^3.6.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.4"
   },
