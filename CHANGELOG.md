@@ -3,6 +3,40 @@
 All notable changes to `works-calendar-engine` are documented here. This
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Dual ESM + CJS build via `tsup`. Consumers using `require()` (older
+  bundlers, CRA, certain test runners) can now consume the package
+  alongside the existing `import` consumers.
+- Sourcemaps shipped for both formats. Downstream apps now see engine
+  source in their devtools instead of bundled output.
+- Per-condition `types` in the `exports` map (`.d.ts` for ESM,
+  `.d.cts` for CJS) so TypeScript resolves the correct flavor under
+  each module system.
+- "Security & embeddability" section in the README documenting the
+  CSP / iframe-sandbox / worker / edge guarantees the engine commits
+  to (no `eval`, no DOM, no network, no Node `crypto`).
+- CI: `publint --strict` and a Node CJS smoke test, in addition to
+  the existing Node ESM smoke test.
+
+### Changed
+
+- `build` script now invokes `tsup` (was: `tsc -p tsconfig.build.json`).
+  `type-check` continues to use `tsc --noEmit`.
+- `package.json#main` now points at `./dist/index.cjs`; added
+  `package.json#module` pointing at `./dist/index.js` for legacy
+  bundlers that read it.
+
+### Notes
+
+- No source-code changes. 1,315 tests / 61 test files still pass.
+- Tarball grew from ~150 kB to ~456 kB packed, almost entirely from
+  the two sourcemap files (~600 kB each before gzip). End users do
+  not download sourcemaps in production builds; this only affects
+  install size on consumer dev machines.
+
 ## [0.1.1]
 
 Expanded the public API surface to cover everything a real consumer
