@@ -90,11 +90,63 @@ The full public surface lives in [`src/index.ts`](./src/index.ts). Highlights:
 | `transitionApproval` / `appendAuditEntry` | Approval state machine + audit |
 | `normalizeEvent` | Loose `WorksCalendarEvent` → strict `EngineEvent` |
 
+## Date input shape
+
+`start` and `end` accept either a `Date` instance or an ISO-8601 string
+(`'2026-06-01T08:00'`, with or without a timezone offset). Strings without
+an offset are interpreted as local wall-clock time, then normalized to a
+`Date` internally. If you want predictable cross-timezone behavior, pass
+either a UTC `Date` or an ISO string with an explicit offset.
+
+## Security & embeddability
+
+This package is designed to run inside third-party pages, sandboxed
+iframes, web workers, and edge runtimes. It commits to the following:
+
+- **No `eval`, no `new Function()`, no dynamic code generation.** Safe
+  under a strict Content Security Policy that omits `unsafe-eval` and
+  `unsafe-inline`.
+- **No DOM access.** The engine doesn't touch `window`, `document`,
+  `localStorage`, or any browser-only global. It runs identically in
+  Node, browser main thread, web workers, service workers, Cloudflare
+  Workers, and Vercel Edge.
+- **No network calls.** No `fetch`, no `XMLHttpRequest`, no telemetry,
+  no remote configuration. The only I/O is whatever you wire into the
+  `onError` hook on `EventBus` / `CalendarEngine`.
+- **No prototype pollution surface.** Inputs are validated against
+  schemas before mutation; the engine never assigns into
+  `Object.prototype` or accepts `__proto__` as a key.
+- **Crypto uses Web Crypto (`globalThis.crypto`) only.** `createId`
+  prefers `crypto.randomUUID()` and falls back to `getRandomValues()`;
+  it throws rather than silently using `Math.random()` if neither is
+  available. The audit-chain `sha256Hex` is a pure synchronous JS
+  implementation — no Node `crypto` import.
+- **No runtime dependencies except `date-fns`** (peer dep,
+  `^3.6.0 || ^4.0.0`). `date-fns` itself has no transitive runtime
+  deps.
+- **`sideEffects: false`** — bundlers tree-shake the engine down to
+  only the symbols you actually import.
+- **Ships ESM + CJS + sourcemaps.** Works under Vite, Webpack 5,
+  Rollup, esbuild, Parcel, and bare Node (`import` or `require`).
+
+If you're embedding via `<script type="module">` directly from a CDN,
+`esm.sh/works-calendar-engine` is the supported path:
+
+```html
+<script type="module">
+  import { evaluateConflicts } from 'https://esm.sh/works-calendar-engine';
+  // ...
+</script>
+```
+
 ## Status
 
-`0.1.0` — initial public release. API is stable enough to build against,
-but minor versions may iterate on shape until `1.0`. See
-[CHANGELOG.md](./CHANGELOG.md).
+`0.1.x` — public API surface (191 exports) is stable enough to build
+against. Minor versions may add exports; breaking changes to existing
+exports will bump to `0.2.0` and be listed in the CHANGELOG. The path
+to `1.0.0` is feature completeness on the recurrence subset (full
+RFC 5545 `BYHOUR`/`BYMINUTE`/`BYSETPOS`) and a frozen public surface.
+See [CHANGELOG.md](./CHANGELOG.md).
 
 ## License
 
