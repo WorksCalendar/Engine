@@ -1,0 +1,63 @@
+# cdn-embed
+
+The "literal embed" story: drop one HTML file on a static host and it
+works. No bundler, no framework, no install.
+
+## Running it
+
+### Once the package is published to npm
+
+Open `index.html` in a browser. It loads the engine from
+[esm.sh](https://esm.sh) via an import map:
+
+```html
+<script type="importmap">
+  { "imports": { "works-calendar-engine": "https://esm.sh/works-calendar-engine@0.1.2" } }
+</script>
+<script type="module">
+  import { evaluateConflicts } from 'works-calendar-engine';
+</script>
+```
+
+esm.sh resolves `date-fns` automatically — you don't need to declare it.
+
+### Before the package is published (local testing)
+
+`file://` URLs don't load ES modules reliably across browsers. Serve the
+example directory with any static server, e.g. from the repo root:
+
+```bash
+npm run build          # produces dist/
+npx serve .            # then open http://localhost:3000/examples/cdn-embed/
+```
+
+To point the import map at your local build instead of esm.sh, replace
+the `imports` entry with a relative path:
+
+```html
+<script type="importmap">
+  { "imports": { "works-calendar-engine": "/dist/index.js" } }
+</script>
+```
+
+Note that the local-build path won't resolve `date-fns` for you — you'd
+need an additional `imports` entry pointing at an esm.sh copy of
+date-fns, or use a small bundle step. The esm.sh route is simpler for a
+demo; the local route is what you'd want when iterating on the engine
+itself.
+
+## What this proves
+
+- The engine ships as a real ES module — `<script type="module">`
+  with no transform pipeline can consume it.
+- The published surface includes the symbols a CDN consumer needs
+  (`evaluateConflicts`, conflict rule types).
+- The package has no DOM access, no `eval`, no remote calls. The same
+  HTML works inside an `<iframe sandbox="allow-scripts">` or behind a
+  CSP without `unsafe-eval` / `unsafe-inline`.
+
+## Embedding into your own page
+
+Copy the `<script type="importmap">` block and the `<script type="module">`
+block. The UI bits (the `<ul>`, the buttons, the inline CSS) are demo
+furniture — replace with your own.
