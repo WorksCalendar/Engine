@@ -32,11 +32,25 @@ jobs:
       # consumer would and confirm the top-level export resolves. Catches the
       # ERR_MODULE_NOT_FOUND class of bugs that bit us during extraction.
       #
-      # @arethetypeswrong/cli would be a nice add here, but as of 0.18.2 its
-      # tarball extractor (fflate streaming Gunzip) drops all chunks except
-      # the last, which makes it crash on this package. Revisit if upstream
+      # @arethetypeswrong/cli would be a nice add here, but as of 0.18.x its
+      # tarball reader crashes with "Cannot read properties of undefined
+      # (reading 'filename')" on this package. publint (below) covers the
+      # exports-map subset of what attw checks. Revisit attw once upstream
       # ships a fix.
       - name: Node ESM smoke test
         run: |
           node -e "import('./dist/index.js').then(m => { if (!m.CalendarEngine) throw new Error('CalendarEngine export missing'); if (typeof m.evaluateConflicts !== 'function') throw new Error('evaluateConflicts export missing'); console.log('OK — ' + Object.keys(m).length + ' exports'); })"
           node -e "import('./dist/index.js').then(({ evaluateConflicts }) => { const r = evaluateConflicts({ proposed: { id: 'a', start: new Date(), end: new Date(Date.now()+3600000), resource: 'x' }, events: [], rules: [{ id: 'r', type: 'resource-overlap', severity: 'hard' }] }); if (!r.allowed) throw new Error('expected allowed for empty events'); console.log('OK — evaluateConflicts callable end-to-end'); })"
+
+      # CJS smoke test: confirm the CJS build is loadable via require().
+      # The dual ESM+CJS exports map is easy to misconfigure (publint catches
+      # the static config errors; this catches runtime resolution errors).
+      - name: Node CJS smoke test
+        run: |
+          node -e "const m = require('./dist/index.cjs'); if (!m.CalendarEngine) throw new Error('CalendarEngine export missing in CJS build'); if (typeof m.evaluateConflicts !== 'function') throw new Error('evaluateConflicts export missing in CJS build'); console.log('OK — CJS ' + Object.keys(m).length + ' exports');"
+
+      # publint: validates the package.json exports map, types resolution,
+      # and tarball contents against the npm + Node resolution rules. Cheap,
+      # catches a whole class of "ships fine, fails at consumer install" bugs.
+      - name: publint
+        run: npx -y publint --strict
