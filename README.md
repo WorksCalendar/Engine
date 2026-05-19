@@ -62,6 +62,10 @@ npm install works-calendar-engine date-fns
 
 ## Examples
 
+- [`examples/cdn-embed`](./examples/cdn-embed) — single HTML file, no
+  build step. Loads the engine from `esm.sh` via an import map and
+  demonstrates `evaluateConflicts` against a small shift list. This is
+  the literal "embed on a webpage" path.
 - [`examples/react-basic`](./examples/react-basic) — month grid + conflict
   badges, ~50 lines of consumer code.
 - [`examples/node-server`](./examples/node-server) — Express POST
