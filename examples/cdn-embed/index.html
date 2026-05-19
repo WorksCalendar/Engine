@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>works-calendar-engine — CDN embed demo</title>
+  <style>
+    :root {
+      --fg: #1a1a1a;
+      --muted: #666;
+      --line: #e4e4e7;
+      --bg-soft: #fafafa;
+      --ok-bg: #ecfdf5;
+      --ok-fg: #047857;
+      --ok-line: #6ee7b7;
+      --bad-bg: #fef2f2;
+      --bad-fg: #b91c1c;
+      --bad-line: #fca5a5;
+    }
+    body {
+      font: 15px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 20px;
+      color: var(--fg);
+    }
+    h1 { font-size: 24px; margin: 0 0 8px; }
+    h2 { font-size: 16px; margin: 32px 0 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+    code { background: var(--bg-soft); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+    p.lede { color: var(--muted); margin: 0 0 4px; }
+    ul#shifts { list-style: none; padding: 0; margin: 0; }
+    ul#shifts li {
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      margin-bottom: 6px;
+      background: var(--bg-soft);
+      font-variant-numeric: tabular-nums;
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    button {
+      font: inherit;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: white;
+      cursor: pointer;
+    }
+    button:hover { background: var(--bg-soft); }
+    #result {
+      padding: 12px 14px;
+      border-radius: 6px;
+      border: 1px solid var(--line);
+      background: var(--bg-soft);
+      color: var(--muted);
+      min-height: 1.5em;
+    }
+    #result.ok  { background: var(--ok-bg);  color: var(--ok-fg);  border-color: var(--ok-line);  }
+    #result.bad { background: var(--bad-bg); color: var(--bad-fg); border-color: var(--bad-line); }
+    footer { margin-top: 40px; color: var(--muted); font-size: 13px; }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>works-calendar-engine — CDN embed demo</h1>
+    <p class="lede">
+      One HTML file. No build step. No framework. The engine loads as
+      an ES module from <code>esm.sh</code>.
+    </p>
+
+    <h2>Alice's shifts — June 1, 2026</h2>
+    <ul id="shifts"></ul>
+
+    <h2>Try adding a shift</h2>
+    <div class="actions">
+      <button id="add-conflict">Add 14:00–16:00 (should conflict)</button>
+      <button id="add-clear">Add 19:00–21:00 (should be allowed)</button>
+    </div>
+
+    <h2>Result</h2>
+    <div id="result">Click a button above.</div>
+
+    <footer>
+      Source on GitHub: <code>examples/cdn-embed/index.html</code>.
+      To embed in your own page, copy the <code>&lt;script type="module"&gt;</code>
+      block. The engine has no DOM, no network, and no <code>eval</code> — it
+      runs unchanged inside an <code>&lt;iframe sandbox&gt;</code> or behind a
+      strict CSP.
+    </footer>
+  </main>
+
+  <!--
+    The engine and its peer dep (date-fns) both come from esm.sh.
+    Pinning to a specific version is the right move in production so a
+    consumer doesn't suddenly pull a different major one day; here we
+    pin to v0.1.2 to match the current package.json.
+  -->
+  <script type="importmap">
+    {
+      "imports": {
+        "works-calendar-engine": "https://esm.sh/works-calendar-engine@0.1.2"
+      }
+    }
+  </script>
+
+  <script type="module">
+    import { evaluateConflicts } from 'works-calendar-engine';
+
+    // Three non-overlapping shifts as the starting state.
+    const shifts = [
+      { id: 's1', start: new Date('2026-06-01T08:00:00'), end: new Date('2026-06-01T12:00:00'), resource: 'alice' },
+      { id: 's2', start: new Date('2026-06-01T13:00:00'), end: new Date('2026-06-01T15:00:00'), resource: 'alice' },
+      { id: 's3', start: new Date('2026-06-01T16:00:00'), end: new Date('2026-06-01T18:00:00'), resource: 'alice' },
+    ];
+
+    // One rule: alice can't be double-booked.
+    const rules = [{ id: 'no-overlap', type: 'resource-overlap', severity: 'hard' }];
+
+    const fmtTime = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
+    const fmtRange = (s) => `${fmtTime(s.start)}–${fmtTime(s.end)}`;
+
+    function render() {
+      const ul = document.getElementById('shifts');
+      ul.innerHTML = shifts
+        .slice()
+        .sort((a, b) => a.start - b.start)
+        .map((s) => `<li>${fmtRange(s)} &nbsp;·&nbsp; ${s.resource}</li>`)
+        .join('');
+    }
+
+    function tryAdd(proposed) {
+      // This is the only engine call. Everything else above is just UI.
+      const result = evaluateConflicts({ proposed, events: shifts, rules });
+
+      const out = document.getElementById('result');
+      if (result.allowed) {
+        shifts.push(proposed);
+        render();
+        out.textContent = `✓ allowed — ${fmtRange(proposed)} added to alice.`;
+        out.className = 'ok';
+      } else {
+        const reasons = result.violations.map((v) => v.message).join('; ');
+        out.textContent = `⛔ rejected — ${reasons}`;
+        out.className = 'bad';
+      }
+    }
+
+    document.getElementById('add-conflict').addEventListener('click', () => {
+      tryAdd({
+        id: `c-${Date.now()}`,
+        start: new Date('2026-06-01T14:00:00'),
+        end: new Date('2026-06-01T16:00:00'),
+        resource: 'alice',
+      });
+    });
+
+    document.getElementById('add-clear').addEventListener('click', () => {
+      tryAdd({
+        id: `c-${Date.now()}`,
+        start: new Date('2026-06-01T19:00:00'),
+        end: new Date('2026-06-01T21:00:00'),
+        resource: 'alice',
+      });
+    });
+
+    render();
+  </script>
+</body>
+</html>
