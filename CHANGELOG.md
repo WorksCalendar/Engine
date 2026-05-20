@@ -3,7 +3,7 @@
 All notable changes to `works-calendar-engine` are documented here. This
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.2] - 2026-05-20
 
 ### Added
 
