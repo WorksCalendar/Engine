@@ -27,7 +27,11 @@ type EntryWithoutHash = Omit<ApprovalHistoryEntry, 'hash'>
 
 function canonicalize(entry: EntryWithoutHash): string {
   const keys = Object.keys(entry).sort()
-  const out: Record<string, unknown> = {}
+  // Null-prototype accumulator: a `__proto__` key in the entry becomes a
+  // real own (and therefore serialized + hashed) property here rather than
+  // silently mutating the accumulator's prototype and dropping out of the
+  // canonical form — which would let that field be tampered with for free.
+  const out: Record<string, unknown> = Object.create(null)
   for (const k of keys) {
     const v = (entry as Record<string, unknown>)[k]
     if (v !== undefined) out[k] = v
