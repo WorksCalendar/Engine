@@ -43,6 +43,12 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Fail if the public API surface drifted from the committed report
+      # (etc/*.api.md). Run after build — it analyzes dist/index.d.ts.
+      # Regenerate locally with `npm run api:update` and commit the diff.
+      - name: API surface check
+        run: npm run api:check
+
       # Node ESM smoke test: actually load the built package the way a
       # consumer would and confirm the top-level export resolves. Catches the
       # ERR_MODULE_NOT_FOUND class of bugs that bit us during extraction.
