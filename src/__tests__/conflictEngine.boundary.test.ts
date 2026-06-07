@@ -54,6 +54,28 @@ describe('evaluateConflicts — invalid proposed window (fail-closed)', () => {
     expect(result.violations[0]?.rule).toBe('invalid-window')
   })
 
+  it('blocks a reversed window (end before start)', () => {
+    const result = evaluateConflicts({
+      proposed: valid({ start: '2026-06-01T16:00:00Z', end: '2026-06-01T08:00:00Z' }),
+      events: [],
+      rules: [OVERLAP_RULE],
+    })
+    expect(result.allowed).toBe(false)
+    expect(result.violations[0]?.rule).toBe('invalid-window')
+  })
+
+  it('blocks a zero-length window (end equal to start)', () => {
+    // A zero-length half-open interval overlaps nothing, so it would
+    // otherwise be reported conflict-free — the same fail-open class.
+    const result = evaluateConflicts({
+      proposed: valid({ start: '2026-06-01T08:00:00Z', end: '2026-06-01T08:00:00Z' }),
+      events: [valid({ id: 'existing' })],
+      rules: [OVERLAP_RULE],
+    })
+    expect(result.allowed).toBe(false)
+    expect(result.violations[0]?.rule).toBe('invalid-window')
+  })
+
   it('reports the invalid window through onError with a stable code', () => {
     const onError = vi.fn()
     evaluateConflicts({

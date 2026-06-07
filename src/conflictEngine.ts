@@ -686,16 +686,25 @@ export function evaluateConflicts(input: EvaluateConflictsInput): ConflictEvalua
   const { proposed, events, rules, enabled = true, resources, assignments, categories, now, holds, holderId, onError } = input
   if (!enabled || rules.length === 0) return VALID
 
-  // Fail-closed boundary check. An invalid proposed window makes every
-  // half-open overlap test false, so a malformed `start`/`end` would
-  // *silently* report the event as conflict-free and let the booking
-  // through. A conflict detector must never green-light an event it cannot
-  // evaluate — surface a hard violation and refuse instead.
-  if (!isValidDate(toDate(proposed.start)) || !isValidDate(toDate(proposed.end))) {
+  // Fail-closed boundary check. The half-open overlap test
+  // (aStart < bEnd && bStart < aEnd) silently returns false for a NaN date
+  // *and* for a non-positive window (end <= start): a zero-length interval
+  // overlaps nothing, and a reversed one compares nonsensically. Either way
+  // a malformed `start`/`end` would be reported conflict-free and let the
+  // booking through. A conflict detector must never green-light an event it
+  // cannot evaluate — parse once, and refuse with a hard violation unless
+  // the window is valid and strictly positive.
+  const proposedStart = toDate(proposed.start)
+  const proposedEnd = toDate(proposed.end)
+  if (
+    !isValidDate(proposedStart) ||
+    !isValidDate(proposedEnd) ||
+    proposedEnd.getTime() <= proposedStart.getTime()
+  ) {
     onError?.(
       toStructuredError({
         code: 'CONFLICT_INVALID_PROPOSED_WINDOW',
-        message: 'Proposed event has an invalid start/end; cannot evaluate conflicts.',
+        message: 'Proposed event has an invalid or non-positive start/end; cannot evaluate conflicts.',
         domain: 'validation',
         severity: 'error',
         recoverable: false,
@@ -707,7 +716,7 @@ export function evaluateConflicts(input: EvaluateConflictsInput): ConflictEvalua
       violations: [{
         rule: 'invalid-window',
         severity: 'hard',
-        message: 'Proposed event has an invalid or missing time window; conflicts cannot be evaluated.',
+        message: 'Proposed event has an invalid, missing, or non-positive time window; conflicts cannot be evaluated.',
         details: { type: 'invalid-window' },
       }],
       severity: 'hard',

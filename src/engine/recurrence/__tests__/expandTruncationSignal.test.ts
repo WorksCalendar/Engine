@@ -44,6 +44,18 @@ describe('expandOccurrences — truncation signal', () => {
     expect(onSeriesTruncated).not.toHaveBeenCalled()
   })
 
+  it('preserves capped occurrences even when onSeriesTruncated throws', () => {
+    // Side-effect-only contract: a buggy host telemetry callback must not
+    // discard the validly-capped series (regression guard — otherwise
+    // expandRecurrenceSafe would catch this and drop the occurrences).
+    const out = expandOccurrences([dailySeries()], rangeStart, rangeEnd, {
+      maxPerSeries: 3,
+      onSeriesTruncated: () => { throw new Error('telemetry boom') },
+    })
+    expect(out.length).toBeLessThanOrEqual(3)
+    expect(out.length).toBeGreaterThan(0)
+  })
+
   it('truncation output is identical whether or not the hook is supplied', () => {
     const withHook = expandOccurrences([dailySeries()], rangeStart, rangeEnd, {
       maxPerSeries: 3,

@@ -109,8 +109,19 @@ function expandRecurring(
 
   // We stopped at the cap (occIdx === maxCount) but more starts remained:
   // the series was truncated. Signal it so the silent data loss is visible.
-  if (occIdx >= maxCount && starts.length > maxCount) {
-    onSeriesTruncated?.({ eventId: ev.id, maxPerSeries: maxCount });
+  // Guard the callback: it is documented as side-effect-only and must not
+  // change the returned array, so a throwing host hook must not propagate
+  // out of expansion. (Without this, expandRecurrenceSafe's try/catch would
+  // mark a validly-capped series as RECURRENCE_EXPANSION_FAILED and drop its
+  // already-computed occurrences.) expandOccurrences has no error channel,
+  // so swallow here; expandRecurrenceSafe is the layer that routes
+  // structured telemetry failures.
+  if (occIdx >= maxCount && starts.length > maxCount && onSeriesTruncated) {
+    try {
+      onSeriesTruncated({ eventId: ev.id, maxPerSeries: maxCount });
+    } catch {
+      /* side-effect-only: preserve expansion output */
+    }
   }
 }
 
