@@ -40,7 +40,8 @@ This is that piece, extracted.
   pub/sub subscriptions, undo/redo with full snapshots.
 - **Approvals** — pure-function state-machine reducer for the
   requested → approved → finalized → denied lifecycle, with a
-  hash-chained audit log.
+  hash-chained audit log (optionally HMAC-keyed for server-verified,
+  tamper-resistant chains).
 - **Resource pools** — query DSL for "all resources where role=driver and
   within 50mi of pickup."
 
@@ -123,8 +124,11 @@ iframes, web workers, and edge runtimes. It commits to the following:
 - **Crypto uses Web Crypto (`globalThis.crypto`) only.** `createId`
   prefers `crypto.randomUUID()` and falls back to `getRandomValues()`;
   it throws rather than silently using `Math.random()` if neither is
-  available. The audit-chain `sha256Hex` is a pure synchronous JS
-  implementation — no Node `crypto` import.
+  available. The audit-chain `sha256Hex`/`hmacSha256Hex` are pure
+  synchronous JS implementations — no Node `crypto` import. The approval
+  audit log defaults to an unkeyed (tamper-evident) SHA-256 chain; pass a
+  server-held `key` to `appendAuditEntry`/`verifyAuditChain` for an
+  HMAC-SHA256 chain that a client cannot forge.
 - **No runtime dependencies except `date-fns`** (peer dep,
   `^3.6.0 || ^4.0.0`). `date-fns` itself has no transitive runtime
   deps.

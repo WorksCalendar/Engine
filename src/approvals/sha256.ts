@@ -1,11 +1,13 @@
 /**
- * Pure, sync SHA-256 — issue #215.
+ * Pure, sync SHA-256 + HMAC-SHA256 — issue #215.
  *
- * Implements FIPS 180-4 on plain JS. Sync by design so the transition
- * reducer and `verifyAuditChain` can remain synchronous and usable from
- * validators/selectors that must return results in one tick. Not meant
- * to outrun WebCrypto on megabyte inputs — audit entries are a few
- * hundred bytes each.
+ * Implements FIPS 180-4 (SHA-256) and FIPS 198-1 / RFC 2104 (HMAC) on plain
+ * JS. Sync by design so the transition reducer and `verifyAuditChain` can
+ * remain synchronous and usable from validators/selectors that must return
+ * results in one tick. No Node `crypto` import and no WebCrypto dependency,
+ * so it runs identically in Node, browsers, workers, and edge runtimes under
+ * a strict CSP. Not meant to outrun WebCrypto on megabyte inputs — audit
+ * entries are a few hundred bytes each.
  */
 
 const K: readonly number[] = [
@@ -19,6 +21,9 @@ const K: readonly number[] = [
   0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
 ]
 
+const SHA256_BLOCK_BYTES = 64
+const SHA256_DIGEST_BYTES = 32
+
 function rotr(x: number, n: number): number {
   return ((x >>> n) | (x << (32 - n))) >>> 0
 }
@@ -27,9 +32,18 @@ function utf8Bytes(s: string): Uint8Array {
   return new TextEncoder().encode(s)
 }
 
-/** Hex-encoded SHA-256 of a UTF-8 string. */
-export function sha256Hex(message: string): string {
-  const msg = utf8Bytes(message)
+function toBytes(input: string | Uint8Array): Uint8Array {
+  return typeof input === 'string' ? utf8Bytes(input) : input
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i++) out += bytes[i]!.toString(16).padStart(2, '0')
+  return out
+}
+
+/** Raw SHA-256 digest of a byte sequence (32 bytes). */
+function sha256Digest(msg: Uint8Array): Uint8Array {
   const byteLen = msg.length
   const bitLen = byteLen * 8
 
@@ -98,6 +112,55 @@ export function sha256Hex(message: string): string {
     h7 = (h7 + h) >>> 0
   }
 
-  const hex = (n: number): string => n.toString(16).padStart(8, '0')
-  return hex(h0) + hex(h1) + hex(h2) + hex(h3) + hex(h4) + hex(h5) + hex(h6) + hex(h7)
+  const out = new Uint8Array(SHA256_DIGEST_BYTES)
+  const words = [h0, h1, h2, h3, h4, h5, h6, h7]
+  for (let i = 0; i < 8; i++) {
+    const w = words[i]!
+    out[i * 4    ] = (w >>> 24) & 0xff
+    out[i * 4 + 1] = (w >>> 16) & 0xff
+    out[i * 4 + 2] = (w >>>  8) & 0xff
+    out[i * 4 + 3] =  w         & 0xff
+  }
+  return out
+}
+
+/** Hex-encoded SHA-256 of a UTF-8 string. */
+export function sha256Hex(message: string): string {
+  return bytesToHex(sha256Digest(utf8Bytes(message)))
+}
+
+/**
+ * Hex-encoded HMAC-SHA256 (FIPS 198-1 / RFC 2104).
+ *
+ * Authenticated keyed digest: only a holder of `key` can produce a value
+ * that verifies, which is what upgrades the audit chain from tamper-
+ * *evident* (anyone can recompute an unkeyed SHA-256 cascade) to tamper-
+ * *resistant* (an attacker who rewrites the whole history cannot forge the
+ * MACs without the secret). Hold the key server-side.
+ *
+ * `key` and `message` accept a UTF-8 string or raw bytes.
+ */
+export function hmacSha256Hex(key: string | Uint8Array, message: string | Uint8Array): string {
+  let k = toBytes(key)
+  // Keys longer than the block are first hashed down (RFC 2104 §2).
+  if (k.length > SHA256_BLOCK_BYTES) k = sha256Digest(k)
+
+  const ipadKey = new Uint8Array(SHA256_BLOCK_BYTES) // zero-padded to block size
+  ipadKey.set(k)
+  const opadKey = ipadKey.slice()
+  for (let i = 0; i < SHA256_BLOCK_BYTES; i++) {
+    ipadKey[i]! ^= 0x36
+    opadKey[i]! ^= 0x5c
+  }
+
+  const msg = toBytes(message)
+  const inner = new Uint8Array(SHA256_BLOCK_BYTES + msg.length)
+  inner.set(ipadKey, 0)
+  inner.set(msg, SHA256_BLOCK_BYTES)
+  const innerDigest = sha256Digest(inner)
+
+  const outer = new Uint8Array(SHA256_BLOCK_BYTES + SHA256_DIGEST_BYTES)
+  outer.set(opadKey, 0)
+  outer.set(innerDigest, SHA256_BLOCK_BYTES)
+  return bytesToHex(sha256Digest(outer))
 }
