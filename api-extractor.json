@@ -1,0 +1,38 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/api-extractor/v7/api-extractor.schema.json",
+
+  // Analyze the bundled declaration rollup that tsup emits. Run `npm run
+  // build` first so this file exists.
+  "mainEntryPointFilePath": "<projectFolder>/dist/index.d.ts",
+
+  // The public API report (etc/works-calendar-engine.api.md) is committed.
+  // CI runs api-extractor without --local and fails if the live surface
+  // drifts from the committed report, turning every accidental
+  // addition/removal/signature change into a reviewable diff (semver guard).
+  "apiReport": {
+    "enabled": true,
+    "reportFolder": "<projectFolder>/etc/",
+    "reportFileName": "<unscopedPackageName>.api.md"
+  },
+
+  // Surface-tracking only — no doc model, no rollup, no tsdoc metadata.
+  "docModel": { "enabled": false },
+  "dtsRollup": { "enabled": false },
+  "tsdocMetadata": { "enabled": false },
+
+  "messages": {
+    "compilerMessageReporting": {
+      "default": { "logLevel": "warning" }
+    },
+    "extractorMessageReporting": {
+      "default": { "logLevel": "warning" },
+      // The package intentionally re-exports a broad surface and does not
+      // (yet) use @public/@beta release tags, so these would be pure noise.
+      "ae-missing-release-tag": { "logLevel": "none" },
+      "ae-forgotten-export": { "logLevel": "none" }
+    },
+    "tsdocMessageReporting": {
+      "default": { "logLevel": "none" }
+    }
+  }
+}

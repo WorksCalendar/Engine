@@ -17,7 +17,7 @@ import type {
   ApprovalStageId,
   ApprovalHistoryEntry,
 } from '../types/assets.js'
-import { appendAuditEntry } from './auditChain.js'
+import { appendAuditEntry, type AuditChainOptions } from './auditChain.js'
 
 // ─── Errors ───────────────────────────────────────────────────────────────
 
@@ -124,6 +124,13 @@ export interface TransitionInput {
   readonly reason?: string | undefined
   /** ISO timestamp for determinism in tests; defaults to `new Date().toISOString()`. */
   readonly at?: string | undefined
+  /**
+   * Audit-chain crypto options for the appended history entry. Supply
+   * `audit.key` to produce an authenticated HMAC chain; omit for the
+   * legacy unkeyed SHA-256 cascade. Whatever is used here must also be
+   * passed to `verifyAuditChain`.
+   */
+  readonly audit?: AuditChainOptions | undefined
 }
 
 /**
@@ -207,7 +214,7 @@ export function transitionApproval(
   const nextStageObj: ApprovalStage = {
     stage: nextStage,
     updatedAt: at,
-    history: appendAuditEntry(current?.history ?? [], entrySeed),
+    history: appendAuditEntry(current?.history ?? [], entrySeed, input.audit),
     ...(counts ? { counts } : {}),
   }
 

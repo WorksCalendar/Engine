@@ -26,6 +26,17 @@ export interface ExpandOptions {
   rangePadDays?: number;
   /** Maximum occurrences per series. Default: 500. */
   maxPerSeries?: number;
+  /**
+   * Called when a series hits `maxPerSeries` with occurrences still
+   * remaining in the expansion window — i.e. its output was truncated.
+   *
+   * The cap is a DoS guardrail, but truncating a legitimate series
+   * silently produces a calendar that is *wrong* (missing occurrences)
+   * with no signal. This hook surfaces that so hosts can raise the cap,
+   * narrow the range, or warn the user. Optional and side-effect-only:
+   * the returned occurrence array is unchanged whether or not it is set.
+   */
+  onSeriesTruncated?: (info: { eventId: string; maxPerSeries: number }) => void;
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
@@ -53,7 +64,7 @@ export function expandOccurrences(
 
   for (const ev of events) {
     if (ev.rrule) {
-      expandRecurring(ev, rangeStart, rangeEnd, expStart, expEnd, maxPerSeries, result);
+      expandRecurring(ev, rangeStart, rangeEnd, expStart, expEnd, maxPerSeries, result, opts.onSeriesTruncated);
     } else {
       // Single event — include if it overlaps the (unpadded) range
       if (ev.start < rangeEnd && ev.end > rangeStart) {
@@ -75,6 +86,7 @@ function expandRecurring(
   expEnd: Date,
   maxCount: number,
   out: EngineOccurrence[],
+  onSeriesTruncated?: (info: { eventId: string; maxPerSeries: number }) => void,
 ): void {
   const durationMillis = eventDurationMs(ev.start, ev.end);
   const exdates = Array.from(ev.exdates ?? []);
@@ -93,6 +105,23 @@ function expandRecurring(
       out.push(makeOccurrence(ev, start, end, occIdx));
     }
     occIdx++;
+  }
+
+  // We stopped at the cap (occIdx === maxCount) but more starts remained:
+  // the series was truncated. Signal it so the silent data loss is visible.
+  // Guard the callback: it is documented as side-effect-only and must not
+  // change the returned array, so a throwing host hook must not propagate
+  // out of expansion. (Without this, expandRecurrenceSafe's try/catch would
+  // mark a validly-capped series as RECURRENCE_EXPANSION_FAILED and drop its
+  // already-computed occurrences.) expandOccurrences has no error channel,
+  // so swallow here; expandRecurrenceSafe is the layer that routes
+  // structured telemetry failures.
+  if (occIdx >= maxCount && starts.length > maxCount && onSeriesTruncated) {
+    try {
+      onSeriesTruncated({ eventId: ev.id, maxPerSeries: maxCount });
+    } catch {
+      /* side-effect-only: preserve expansion output */
+    }
   }
 }
 

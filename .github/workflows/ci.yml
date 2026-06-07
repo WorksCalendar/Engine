@@ -5,19 +5,39 @@ on:
     branches: ['**']
   pull_request:
 
-jobs:
-  check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+# Least privilege: CI only needs to read the repo. No job here writes to
+# GitHub, so deny everything else by default.
+permissions:
+  contents: read
 
-      - uses: actions/setup-node@v4
+jobs:
+  # Cross-environment compatibility: every supported Node LTS against both
+  # supported date-fns majors (peer dep range is ^3.6.0 || ^4.0.0).
+  test:
+    name: test (node ${{ matrix.node-version }}, date-fns ${{ matrix.date-fns }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ['20', '22', '24']
+        date-fns: ['3', '4']
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
-          node-version: '22'
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ matrix.node-version }}
           cache: 'npm'
 
       - name: Install dependencies
         run: npm ci
+
+      # Exercise the peer dependency at the matrix major. --no-save keeps the
+      # committed lockfile authoritative; only the runtime copy is swapped.
+      - name: Pin date-fns ${{ matrix.date-fns }}.x
+        run: npm install --no-save date-fns@${{ matrix.date-fns }}
 
       - name: Type check
         run: npm run type-check
@@ -25,8 +45,42 @@ jobs:
       - name: Unit tests
         run: npm test
 
+  # Package-integrity and quality gates that are environment-independent —
+  # run once on the primary Node version.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Supply-chain gate: fail the build on a known high/critical advisory
+      # anywhere in the resolved tree (toolchain included). Lower-severity
+      # advisories are surfaced by Dependabot rather than blocking CI.
+      - name: Audit dependencies
+        run: npm audit --audit-level=high
+
+      # Runs the full suite with coverage and enforces the ratchet-floor
+      # thresholds configured in vitest.config.ts (fails on regression).
+      - name: Unit tests + coverage
+        run: npm run coverage
+
       - name: Build
         run: npm run build
+
+      # Fail if the public API surface drifted from the committed report
+      # (etc/*.api.md). Run after build — it analyzes dist/index.d.ts.
+      # Regenerate locally with `npm run api:update` and commit the diff.
+      - name: API surface check
+        run: npm run api:check
 
       # Node ESM smoke test: actually load the built package the way a
       # consumer would and confirm the top-level export resolves. Catches the

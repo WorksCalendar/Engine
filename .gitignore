@@ -4,3 +4,5 @@ dist/
 .DS_Store
 coverage/
 .vitest-cache/
+sbom.cdx.json
+temp/

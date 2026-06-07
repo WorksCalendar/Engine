@@ -145,4 +145,12 @@ export interface CalendarEngineInit {
    * fan out to Slack, webhooks, billing, etc.
    */
   readonly bus?: import('./eventBus.js').EventBus;
+  /**
+   * Optional structured-error sink. When supplied, the engine routes its
+   * internal diagnostics (dropped malformed-id events, throwing state
+   * listeners) here instead of to `console`, so hosts in console-less or
+   * structured-logging environments don't lose them. Defaults to the
+   * previous console behavior when omitted.
+   */
+  readonly onError?: import('./errors/onError.js').OnError;
 }

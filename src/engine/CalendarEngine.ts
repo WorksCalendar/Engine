@@ -66,6 +66,8 @@ import {
   type BookingLifecyclePayload,
 } from './eventBus.js';
 import type { ApprovalStage } from '../types/assets.js';
+import type { OnError } from './errors/onError.js';
+import { toStructuredError } from './errors/onError.js';
 
 // ─── Initial state ────────────────────────────────────────────────────────────
 
@@ -76,21 +78,35 @@ import type { ApprovalStage } from '../types/assets.js';
  * normalization). Indexing it would corrupt the map with an `undefined`/empty
  * key and surface as ghost events everywhere; better to drop it loudly.
  */
-function indexEventsById(events: ReadonlyArray<EngineEvent>): Map<string, EngineEvent> {
+function indexEventsById(
+  events: ReadonlyArray<EngineEvent>,
+  onError?: OnError,
+): Map<string, EngineEvent> {
   const map = new Map<string, EngineEvent>();
   for (const ev of events) {
     const id = (ev as { id?: unknown } | null | undefined)?.id;
     if (typeof id === 'string' && id !== '') {
       map.set(id, ev);
-    } else if (typeof console !== 'undefined') {
-      console.warn('[WorksCalendar] CalendarEngine: ignoring an event with a missing/invalid id:', ev);
+    } else {
+      reportEngineError(
+        onError,
+        {
+          code: 'ENGINE_INVALID_EVENT_ID',
+          message: 'Ignoring an event with a missing/invalid id.',
+          domain: 'validation',
+          severity: 'warning',
+          recoverable: true,
+          context: { event: ev },
+        },
+        () => console.warn('[WorksCalendar] CalendarEngine: ignoring an event with a missing/invalid id:', ev),
+      );
     }
   }
   return map;
 }
 
 export function createInitialState(init: CalendarEngineInit = {}): CalendarState {
-  const eventMap = indexEventsById(init.events ?? []);
+  const eventMap = indexEventsById(init.events ?? [], init.onError);
 
   const assignMap = new Map<string, Assignment>();
   for (const a of init.assignments ?? []) assignMap.set(a.id, a);
@@ -158,9 +174,13 @@ export class CalendarEngine {
   /** Optional lifecycle bus (issue #216). null when host did not wire one. */
   private _bus: EventBus | null;
 
+  /** Optional structured-error sink. null when host did not wire one. */
+  private _onError: OnError | null;
+
   constructor(init: CalendarEngineInit = {}) {
     this._state = createInitialState(init);
     this._bus = init.bus ?? null;
+    this._onError = init.onError ?? null;
     this._rebuildAssignmentIndex();
     this._rebuildDependencyIndex();
   }
@@ -291,7 +311,7 @@ export class CalendarEngine {
    * Notifies subscribers once.
    */
   setEvents(events: ReadonlyArray<EngineEvent>): void {
-    this._state = { ...this._state, events: indexEventsById(events) };
+    this._state = { ...this._state, events: indexEventsById(events, this._onError ?? undefined) };
     this._notify();
   }
 
@@ -578,7 +598,18 @@ export class CalendarEngine {
       try {
         listener(this._state);
       } catch (err) {
-        console.error('[CalendarEngine] Listener threw:', err);
+        reportEngineError(
+          this._onError ?? undefined,
+          {
+            code: 'ENGINE_LISTENER_THREW',
+            message: 'A state listener threw during notify; other listeners were unaffected.',
+            domain: 'render',
+            severity: 'error',
+            recoverable: true,
+            cause: err,
+          },
+          () => console.error('[CalendarEngine] Listener threw:', err),
+        );
       }
     }
   }
@@ -733,6 +764,27 @@ export class CalendarEngine {
       ...extras,
     };
     this._bus.emit(channel, payload);
+  }
+}
+
+// ─── Diagnostics routing (module-local) ─────────────────────────────────────
+
+/**
+ * Route an internal engine diagnostic to the host's structured `onError`
+ * sink when one is wired, otherwise fall back to the previous `console`
+ * behavior. Keeping the console fallback means hosts that never configured
+ * `onError` see no behavior change, while console-less / structured-logging
+ * hosts can capture everything.
+ */
+function reportEngineError(
+  onError: OnError | undefined,
+  params: Parameters<typeof toStructuredError>[0],
+  consoleFallback: () => void,
+): void {
+  if (onError) {
+    onError(toStructuredError(params));
+  } else if (typeof console !== 'undefined') {
+    consoleFallback();
   }
 }
 

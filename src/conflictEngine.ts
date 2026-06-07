@@ -22,6 +22,8 @@ import { findBlockingHold, type Hold } from './holds/holdRegistry.js'
 import { evaluateAvailability } from './availability/evaluateAvailability.js'
 import { parseHoursString } from './engine/time/dateMath.js'
 import { partsInTimezone } from './engine/time/timezone.js'
+import type { OnError } from './engine/errors/onError.js'
+import { toStructuredError } from './engine/errors/onError.js'
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -184,6 +186,14 @@ export interface EvaluateConflictsInput {
    * matching hold is treated as "someone else's".
    */
   readonly holderId?: string
+  /**
+   * Optional structured-error sink. The proposed event is *always*
+   * validated regardless of this hook — an invalid window fails closed
+   * (see `evaluateConflicts`). When this hook is supplied, malformed
+   * *stored* events (NaN start/end) are additionally reported instead of
+   * silently never-matching, so corrupt data surfaces to host telemetry.
+   */
+  readonly onError?: OnError
 }
 
 const VALID: ConflictEvaluationResult = {
@@ -198,6 +208,10 @@ const NO_EVENTS: readonly ConflictEvent[] = []
 
 function toDate(value: Date | string | number): Date {
   return value instanceof Date ? value : new Date(value)
+}
+
+function isValidDate(d: Date): boolean {
+  return !Number.isNaN(d.getTime())
 }
 
 /** Half-open interval overlap — touching endpoints are NOT a conflict. */
@@ -669,8 +683,69 @@ function evalMinRest(
  * pure and side-effect-free so the result is fully memoisable by caller.
  */
 export function evaluateConflicts(input: EvaluateConflictsInput): ConflictEvaluationResult {
-  const { proposed, events, rules, enabled = true, resources, assignments, categories, now, holds, holderId } = input
+  const { proposed, events, rules, enabled = true, resources, assignments, categories, now, holds, holderId, onError } = input
   if (!enabled || rules.length === 0) return VALID
+
+  // Fail-closed boundary check. The half-open overlap test
+  // (aStart < bEnd && bStart < aEnd) silently returns false for a NaN date
+  // *and* for a non-positive window (end <= start): a zero-length interval
+  // overlaps nothing, and a reversed one compares nonsensically. Either way
+  // a malformed `start`/`end` would be reported conflict-free and let the
+  // booking through. A conflict detector must never green-light an event it
+  // cannot evaluate — parse once, and refuse with a hard violation unless
+  // the window is valid and strictly positive.
+  const proposedStart = toDate(proposed.start)
+  const proposedEnd = toDate(proposed.end)
+  if (
+    !isValidDate(proposedStart) ||
+    !isValidDate(proposedEnd) ||
+    proposedEnd.getTime() <= proposedStart.getTime()
+  ) {
+    onError?.(
+      toStructuredError({
+        code: 'CONFLICT_INVALID_PROPOSED_WINDOW',
+        message: 'Proposed event has an invalid or non-positive start/end; cannot evaluate conflicts.',
+        domain: 'validation',
+        severity: 'error',
+        recoverable: false,
+        context: { eventId: proposed.id, start: proposed.start, end: proposed.end },
+      }),
+      { eventId: proposed.id, phase: 'validate' },
+    )
+    return {
+      violations: [{
+        rule: 'invalid-window',
+        severity: 'hard',
+        message: 'Proposed event has an invalid, missing, or non-positive time window; conflicts cannot be evaluated.',
+        details: { type: 'invalid-window' },
+      }],
+      severity: 'hard',
+      allowed: false,
+    }
+  }
+
+  // Observability for malformed *stored* events (opt-in via `onError`).
+  // These never match the half-open overlap test, so they don't change the
+  // verdict, but silently ignoring corrupt data hides real problems. Only
+  // paid for when the caller wants the signal — the fast path is untouched.
+  if (onError) {
+    for (const e of events) {
+      if (e.id === proposed.id) continue
+      if (!isValidDate(toDate(e.start)) || !isValidDate(toDate(e.end))) {
+        onError(
+          toStructuredError({
+            code: 'CONFLICT_MALFORMED_EVENT_SKIPPED',
+            message: 'Skipping a stored event with an invalid start/end during conflict evaluation.',
+            domain: 'validation',
+            severity: 'warning',
+            recoverable: true,
+            context: { eventId: e.id },
+          }),
+          { eventId: e.id, phase: 'validate' },
+        )
+      }
+    }
+  }
 
   const nowMs = now !== undefined ? toDate(now).getTime() : Date.now()
   const violations: Violation[] = []
