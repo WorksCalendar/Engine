@@ -1,0 +1,25 @@
+version: 2
+updates:
+  # The published package's own dependency tree (peer/dev deps + lockfile).
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      # Batch routine dev-tooling bumps into one PR to cut review noise;
+      # security updates still come through individually and promptly.
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # Keep CI/release Actions current. Because the workflows are pinned to
+  # commit SHAs (supply-chain hardening), Dependabot is what advances those
+  # pins safely — without it, SHA pins silently rot.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
