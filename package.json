@@ -40,6 +40,7 @@
     "build": "tsup",
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "type-check": "tsc --noEmit -p tsconfig.build.json",
     "check": "npm run type-check && npm test"
   },
@@ -51,6 +52,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.39",
+    "@vitest/coverage-v8": "^4.1.8",
     "date-fns": "^3.6.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",

@@ -35,8 +35,10 @@ jobs:
       - name: Type check
         run: npm run type-check
 
-      - name: Unit tests
-        run: npm test
+      # Runs the full suite with coverage and enforces the ratchet-floor
+      # thresholds configured in vitest.config.ts (fails on regression).
+      - name: Unit tests + coverage
+        run: npm run coverage
 
       - name: Build
         run: npm run build
