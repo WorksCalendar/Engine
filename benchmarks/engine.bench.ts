@@ -17,6 +17,8 @@
 
 import { evaluateConflicts, type ConflictEvent, type ConflictRule } from '../src/conflictEngine.js'
 import { expandRRule } from '../src/engine/recurrence/expandRRule.js'
+import { evaluateAvailability } from '../src/availability/evaluateAvailability.js'
+import type { AvailabilityRule } from '../src/availability/availabilityRule.js'
 
 // ─── Tiny timing helpers ──────────────────────────────────────────────────────
 
@@ -52,10 +54,14 @@ const fmt = (n: number): string =>
   n >= 1e9 ? `${(n / 1e9).toFixed(2)}B`
   : n >= 1e6 ? `${(n / 1e6).toFixed(2)}M`
   : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K`
-  : n.toFixed(0)
+  : n >= 1 ? n.toFixed(0)
+  : n.toFixed(2)
 
 const ms = (n: number): string =>
-  n < 1 ? `${(n * 1000).toFixed(0)}µs` : `${n.toFixed(n < 10 ? 2 : 1)}ms`
+  n >= 60_000 ? `${(n / 60_000).toFixed(1)}min`
+  : n >= 1000 ? `${(n / 1000).toFixed(2)}s`
+  : n < 1 ? `${(n * 1000).toFixed(0)}µs`
+  : `${n.toFixed(n < 10 ? 2 : 1)}ms`
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
 
@@ -168,13 +174,108 @@ function benchRRule(): Row[] {
   return rows
 }
 
+// ─── Benchmark 3: availability-matrix matching ────────────────────────────────
+
+// A handful of IANA zones so the zone-aware evaluator exercises its real path
+// (resources rarely all share UTC).
+const ZONES = ['UTC', 'America/Denver', 'America/New_York', 'Europe/Berlin', 'Asia/Tokyo']
+
+/** One resource's rule set: a weekday open window, a weekend window, one blackout. */
+function makeResourceRules(i: number): { rules: AvailabilityRule[]; timezone: string } {
+  return {
+    timezone: ZONES[i % ZONES.length]!,
+    rules: [
+      { id: `open-wd-${i}`, kind: 'open', days: [1, 2, 3, 4, 5], start: '08:00', end: '18:00' },
+      { id: `open-we-${i}`, kind: 'open', days: [6], start: '10:00', end: '14:00' },
+      {
+        id: `bo-${i}`,
+        kind: 'blackout',
+        start: new Date(Date.UTC(2026, 0, 8)).toISOString(),
+        end: new Date(Date.UTC(2026, 0, 9)).toISOString(),
+        reason: 'maintenance',
+      },
+    ],
+  }
+}
+
+/**
+ * Sweep an M-resource × T-slot availability matrix: for every (resource, slot)
+ * cell, ask "is this resource open for this slot?". This is the multi-resource
+ * matching workload — the one case where a Rust/Wasm SIMD bitset-intersection
+ * port would meaningfully beat JS, so it gets the most attention here.
+ */
+function sweepMatrix(
+  resources: { rules: AvailabilityRule[]; timezone: string }[],
+  slots: { start: Date; end: Date }[],
+): number {
+  let open = 0
+  for (const res of resources) {
+    for (const slot of slots) {
+      const r = evaluateAvailability({ window: slot, rules: res.rules, timezone: res.timezone })
+      if (r.ok) open++
+    }
+  }
+  return open
+}
+
+/**
+ * Measure per-cell throughput on a modest real sweep, then *project* the large
+ * target matrices from it.
+ *
+ * Why projected rather than literally swept: a single availability cell costs
+ * ~0.5ms today because `partsInTimezone` builds a fresh `Intl.DateTimeFormat`
+ * on every call (and `wallClockToUtc` invokes it several times). At that rate a
+ * literal 4.3M-cell sweep runs for tens of minutes — impractical for a bench
+ * that should finish in seconds. Measuring per-cell cost and multiplying is
+ * both faster and more honest about where the time goes.
+ */
+function benchMatrix(): { rows: Row[]; cellsPerSec: number } {
+  const slotMin = 30
+  const slotMs = slotMin * 60_000
+  const slotsPerDay = (24 * 60) / slotMin
+  const base = Date.UTC(2026, 0, 5) // a Monday
+
+  // Real measurement: a small mixed-zone sweep, sized to a stable sample.
+  const sampleResources = 20
+  const sampleDays = 3
+  const resources = Array.from({ length: sampleResources }, (_, i) => makeResourceRules(i))
+  const sampleSlots = Array.from({ length: sampleDays * slotsPerDay }, (_, s) => {
+    const startMs = base + s * slotMs
+    return { start: new Date(startMs), end: new Date(startMs + slotMs) }
+  })
+  const sampleCells = sampleResources * sampleSlots.length
+
+  const r = timeit(() => { sweepMatrix(resources, sampleSlots) }, { warmupMs: 100, minMs: 500 })
+  const cellsPerSec = (sampleCells * r.opsPerSec)
+
+  // Projected target matrices.
+  const targets = [
+    { label: '50 res × 7d', resources: 50, days: 7 },
+    { label: '200 res × 30d', resources: 200, days: 30 },
+    { label: '500 res × 90d', resources: 500, days: 90 },
+  ]
+  const rows: Row[] = targets.map((t) => {
+    const cells = t.resources * t.days * slotsPerDay
+    const sweepMs = (cells / cellsPerSec) * 1000
+    return {
+      label: `${t.label} = ${fmt(cells)} cells`,
+      scale: cells,
+      unit: 'cells',
+      perCallMs: sweepMs, // projected wall time for the full sweep
+      callsPerSec: 1000 / sweepMs, // projected matrices/sec
+      itemsPerSec: cellsPerSec, // measured, constant
+    }
+  })
+  return { rows, cellsPerSec }
+}
+
 // ─── Output ───────────────────────────────────────────────────────────────────
 
-function printTable(title: string, rows: Row[]) {
+function printTable(title: string, rows: Row[], callsHeader = 'calls/sec', perHeader = 'per call') {
   console.log(`\n${title}`)
   console.log('─'.repeat(title.length))
-  const head = ['workload', 'per call', 'calls/sec', `${rows[0]?.unit}/sec`]
-  const widths = [42, 10, 12, 14]
+  const head = ['workload', perHeader, callsHeader, `${rows[0]?.unit}/sec`]
+  const widths = [42, 12, 14, 14]
   const pad = (s: string, w: number) => s.length >= w ? s : s + ' '.repeat(w - s.length)
   console.log(head.map((h, i) => pad(h, widths[i]!)).join(''))
   for (const row of rows) {
@@ -194,10 +295,14 @@ function main() {
   const t0 = now()
   const conflicts = benchConflicts()
   const rrule = benchRRule()
+  const matrix = benchMatrix()
   const wallSec = (now() - t0) / 1000
 
   if (json) {
-    console.log(JSON.stringify({ node: process.version, conflicts, rrule, wallSec }, null, 2))
+    console.log(JSON.stringify(
+      { node: process.version, conflicts, rrule, matrix: matrix.rows, matrixCellsPerSec: matrix.cellsPerSec, wallSec },
+      null, 2,
+    ))
     return
   }
 
@@ -205,11 +310,17 @@ function main() {
   console.log(`node ${process.version} · ${new Date().toISOString()}`)
   printTable('1. evaluateConflicts (proposed event vs. existing events)', conflicts)
   printTable('2. expandRRule (recurring-series fan-out)', rrule)
+  printTable('3. availability-matrix matching (M resources × T slots, projected)', matrix.rows, 'matrices/sec', 'sweep time')
   console.log(`\nbenchmark wall time: ${wallSec.toFixed(1)}s`)
   console.log(
-    `\nRead "events/sec" as raw scan throughput; "calls/sec" is what a host\n` +
-    `actually experiences per booking validation. Use these as the baseline\n` +
-    `to compare any Rust/Wasm port against.`,
+    `\nNotes:\n` +
+    `• #1/#2 columns are measured directly; #3 is measured per-cell, then the\n` +
+    `  full matrices are projected (a literal multi-million-cell sweep runs for minutes).\n` +
+    `• The matrix path is ~${fmt(matrix.cellsPerSec)} cells/sec — bottlenecked by a fresh\n` +
+    `  Intl.DateTimeFormat built per availability check, NOT by arithmetic.\n` +
+    `  A Rust/Wasm port (own tz tables, SIMD bitset intersection) is the large\n` +
+    `  win here — but memoizing the JS formatter would also recover most of it.\n` +
+    `• Use these as the baseline to compare any Rust/Wasm port against.`,
   )
 }
 

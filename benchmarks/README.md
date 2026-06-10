@@ -16,9 +16,14 @@ npm run bench -- --json # machine-readable
    (`resource-overlap` + `category-mutex` + `min-rest`).
 2. **`expandRRule`** — recurring-series fan-out into concrete dates
    (daily, weekly-BYDAY, hourly).
+3. **availability-matrix matching** — sweep an M-resource × T-slot grid via
+   `evaluateAvailability`, the multi-resource "find common free slots"
+   workload. Per-cell cost is measured on a small mixed-timezone sweep, then
+   the large target matrices are *projected* (a literal multi-million-cell
+   sweep runs for minutes — see below).
 
-Each case warms up the JIT, then runs in growing batches until it has spent
-enough wall time to give a stable per-op figure.
+Each measured case warms up the JIT, then runs in growing batches until it has
+spent enough wall time to give a stable per-op figure.
 
 ## How to read it
 
@@ -34,12 +39,28 @@ Numbers vary by machine; treat the *shape* as the takeaway.
 
 | Path | Throughput | Feel |
 |---|---|---|
-| Conflict check | ~9M events/sec | 10K-event calendar validates in ~1ms; 100K in ~15ms |
-| RRULE expansion | ~0.8–1M occurrences/sec | a year of daily events in well under 1ms |
+| Conflict check | ~9–11M events/sec | 10K-event calendar validates in ~1ms; 100K in ~9ms |
+| RRULE expansion | ~0.9–1.1M occurrences/sec | a year of daily events in well under 1ms |
+| Availability matrix | **~2K cells/sec** | a 2.16M-cell sweep would take **~17 min** |
 
-**Implication for a Rust/Wasm port:** conflict detection is already
-memory-bandwidth/linear-scan bound and effectively instant for any realistic
-embedded calendar — a Wasm rewrite buys little there once you account for the
-JS↔Wasm marshalling cost. The RRULE path is comparatively string-parse bound
-and is the more defensible candidate to offload, alongside large
-availability-matrix matching (not yet covered here).
+## The availability-matrix finding
+
+The matrix path is ~3–4 orders of magnitude slower per item than the other
+two — but **not because the math is slow.** `partsInTimezone`
+(`src/engine/time/timezone.ts`) constructs a fresh `Intl.DateTimeFormat` on
+every call, and `wallClockToUtc` invokes it several times per availability
+check. Formatter construction — not arithmetic — dominates, costing ~0.5ms per
+cell.
+
+This reframes the "should we port to Rust/Wasm?" question:
+
+- **Conflict detection** is already linear-scan bound and effectively instant
+  for any realistic embedded calendar — a Wasm rewrite buys little there once
+  you account for JS↔Wasm marshalling.
+- **RRULE expansion** is comparatively string-parse bound — a more defensible
+  offload candidate.
+- **Availability matrix** is the one workload with a large headroom, and a
+  Rust/Wasm port (its own timezone tables + SIMD bitset intersection) would
+  win big. *But* memoizing the `Intl.DateTimeFormat` per `(timezone)` in plain
+  JS would recover most of that headroom for a fraction of the effort — worth
+  trying first.
